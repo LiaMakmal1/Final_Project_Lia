@@ -4,7 +4,7 @@ module = Extension(
     "symnmfmodule",
     sources=["symnmfmodule.c", "symnmf.c"],
     define_macros=[("SYMNMF_PYTHON_MODULE", "1")],
-    extra_compile_args=["-ansi", "-Wall", "-Wextra", "-Werror", "-pedantic-errors"],
+    extra_compile_args=["-std=c99", "-Wall", "-Wextra", "-Werror", "-pedantic-errors"],
     extra_link_args=[],
     libraries=["m"],
 )

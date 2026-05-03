@@ -10,11 +10,13 @@ BETA = 0.5
 
 
 def error_exit():
+    """Print error message and terminate."""
     print("An Error Has Occurred")
     sys.exit(1)
 
 
 def read_input_file(file_name):
+    """Parse a CSV-formatted .txt file into a 2-D float64 NumPy array."""
     data = []
     try:
         with open(file_name, "r") as f:
@@ -29,7 +31,7 @@ def read_input_file(file_name):
         error_exit()
 
     try:
-        x = np.array(data, dtype=np.float32)
+        x = np.array(data, dtype=np.float64)
     except Exception:
         error_exit()
 
@@ -40,81 +42,92 @@ def read_input_file(file_name):
 
 
 def initialize_h(w, k):
+    """Randomly initialize H in [0, 2*sqrt(mean(W)/k)] with seed 1234."""
     np.random.seed(1234)
     m = float(np.mean(w))
     upper = 2.0 * np.sqrt(m / k)
-    return np.random.uniform(0.0, upper, size=(w.shape[0], k)).astype(np.float32)
+    return np.random.uniform(0.0, upper, size=(w.shape[0], k)).astype(np.float64)
 
 
 def symnmf_labels(x, k):
-    w = np.array(symnmfmodule.norm(x.tolist()), dtype=np.float32)
+    """Run symNMF via the C extension and return hard cluster assignments."""
+    w = np.array(symnmfmodule.norm(x.tolist()), dtype=np.float64)
     h_init = initialize_h(w, k)
     h_final = np.array(
         symnmfmodule.symnmf(h_init.tolist(), w.tolist(), MAX_ITER, EPS, BETA),
-        dtype=np.float32
+        dtype=np.float64,
     )
     return np.argmax(h_final, axis=1)
 
 
-def euclidean_distance(u, v):
-    diff = u - v
-    return float(np.sqrt(np.sum(diff * diff)))
+# ---------------------------------------------------------------------------
+# K-Means helpers
+# ---------------------------------------------------------------------------
+
+def assign_labels(x, centroids):
+    """Return nearest-centroid index for every data point.
+
+    Vectorised via NumPy broadcasting: O(n*k*d) in compiled C, not Python.
+    x : (n, d),  centroids : (k, d)  →  labels : (n,)
+    """
+    diffs = x[:, np.newaxis, :] - centroids[np.newaxis, :, :]
+    sq_dists = np.einsum("ijk,ijk->ij", diffs, diffs)
+    return np.argmin(sq_dists, axis=1)
+
+
+def update_centroids(x, labels, k, old_centroids):
+    """Recompute centroid positions; keeps old position for empty clusters.
+
+    x : (n, d),  labels : (n,),  old_centroids : (k, d)  →  (k, d)
+    """
+    new_centroids = old_centroids.copy()
+    for j in range(k):
+        members = x[labels == j]
+        if len(members) > 0:
+            new_centroids[j] = members.mean(axis=0)
+    return new_centroids
+
+
+def has_converged(centroids, new_centroids, eps):
+    """Return True when every centroid moved by less than *eps*."""
+    shifts = np.sqrt(np.sum((centroids - new_centroids) ** 2, axis=1))
+    return bool(np.all(shifts < eps))
 
 
 def kmeans_labels(x, k, max_iter=MAX_ITER, eps=EPS):
-    n = x.shape[0]
+    """Run K-Means and return cluster-label array.
+
+    Centroids are seeded from the first k data points.
+    All distance computation is vectorised for large-dataset performance.
+
+    Parameters
+    ----------
+    x        : ndarray (n, d)
+    k        : int – number of clusters
+    max_iter : int – iteration cap (default MAX_ITER = 300)
+    eps      : float – convergence threshold (default EPS = 1e-4)
+    """
     centroids = x[:k].copy()
 
     for _ in range(max_iter):
-        labels = np.empty(n, dtype=int)
+        labels = assign_labels(x, centroids)
+        new_centroids = update_centroids(x, labels, k, centroids)
 
-        for i in range(n):
-            best_cluster = 0
-            best_dist = euclidean_distance(x[i], centroids[0])
-
-            for j in range(1, k):
-                curr_dist = euclidean_distance(x[i], centroids[j])
-                if curr_dist < best_dist:
-                    best_dist = curr_dist
-                    best_cluster = j
-
-            labels[i] = best_cluster
-
-        new_centroids = centroids.copy()
-
-        for j in range(k):
-            cluster_points = x[labels == j]
-            if len(cluster_points) > 0:
-                new_centroids[j] = np.mean(cluster_points, axis=0)
-
-        stop = True
-        for j in range(k):
-            if euclidean_distance(centroids[j], new_centroids[j]) >= eps:
-                stop = False
-                break
+        if has_converged(centroids, new_centroids, eps):
+            centroids = new_centroids
+            break
 
         centroids = new_centroids
 
-        if stop:
-            break
+    return assign_labels(x, centroids)
 
-    final_labels = np.empty(n, dtype=int)
-    for i in range(n):
-        best_cluster = 0
-        best_dist = euclidean_distance(x[i], centroids[0])
 
-        for j in range(1, k):
-            curr_dist = euclidean_distance(x[i], centroids[j])
-            if curr_dist < best_dist:
-                best_dist = curr_dist
-                best_cluster = j
-
-        final_labels[i] = best_cluster
-
-    return final_labels
-
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 def main():
+    """Parse CLI args, run both clustering methods, and print scores."""
     if len(sys.argv) != 3:
         error_exit()
 
