@@ -4,13 +4,13 @@
 
 /* input: matrix pointer, number of allocated rows
    output: none - frees the matrix */
-static void free_partial_matrix(double** mat, int rows_allocated) {
-    free_matrix(mat, rows_allocated);
+static void free_mat(double** mat, int rows) {
+    free_matrix(mat, rows);
 }
 
 /* input: Python list-of-lists
    output: 1 on success and fills *out_rows and *out_cols, 0 if invalid */
-static int get_matrix_dims(PyObject* py_mat, int* out_rows, int* out_cols) {
+static int mat_dims(PyObject* py_mat, int* out_rows, int* out_cols) {
     Py_ssize_t rows_ssize, cols_ssize;
     PyObject* first_row;
 
@@ -36,7 +36,7 @@ static int get_matrix_dims(PyObject* py_mat, int* out_rows, int* out_cols) {
 
 /* input: C matrix, Python row object, row index, number of cols
    output: 1 on success, 0 if any element can't be read as a double */
-static int fill_c_matrix_row(double** mat, PyObject* row_obj,
+static int fill_row(double** mat, PyObject* row_obj,
     int row, Py_ssize_t cols) {
     Py_ssize_t j;
     PyObject* item;
@@ -58,12 +58,12 @@ static int fill_c_matrix_row(double** mat, PyObject* row_obj,
 
 /* input: Python list-of-lists
    output: C matrix (caller must free), sets *out_rows and *out_cols */
-static double** py_to_c_matrix(PyObject* py_mat, int* out_rows, int* out_cols) {
+static double** to_c_mat(PyObject* py_mat, int* out_rows, int* out_cols) {
     double** mat;
     Py_ssize_t i, rows_ssize, cols_ssize;
     PyObject* row_obj;
 
-    if (!get_matrix_dims(py_mat, out_rows, out_cols)) {
+    if (!mat_dims(py_mat, out_rows, out_cols)) {
         return NULL;
     }
     rows_ssize = (Py_ssize_t)(*out_rows);
@@ -77,11 +77,11 @@ static double** py_to_c_matrix(PyObject* py_mat, int* out_rows, int* out_cols) {
         row_obj = PyList_GetItem(py_mat, i);
         if (row_obj == NULL || !PyList_Check(row_obj)
                 || PyList_Size(row_obj) != cols_ssize) {
-            free_partial_matrix(mat, *out_rows);
+            free_mat(mat, *out_rows);
             return NULL;
         }
-        if (!fill_c_matrix_row(mat, row_obj, (int)i, cols_ssize)) {
-            free_partial_matrix(mat, *out_rows);
+        if (!fill_row(mat, row_obj, (int)i, cols_ssize)) {
+            free_mat(mat, *out_rows);
             return NULL;
         }
     }
@@ -90,7 +90,7 @@ static double** py_to_c_matrix(PyObject* py_mat, int* out_rows, int* out_cols) {
 
 /* input: C matrix (rows x cols)
    output: Python list-of-lists of floats */
-static PyObject* c_matrix_to_py(double** mat, int rows, int cols) {
+static PyObject* to_py_mat(double** mat, int rows, int cols) {
     PyObject* outer;
     PyObject* row;
     PyObject* value;
@@ -134,18 +134,18 @@ static PyObject* py_sym(PyObject* self, PyObject* args) {
     if (!PyArg_ParseTuple(args, "O", &py_x)) {
         return NULL;
     }
-    X = py_to_c_matrix(py_x, &n, &d);
+    X = to_c_mat(py_x, &n, &d);
     if (X == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
         return NULL;
     }
-    A = compute_similarity_matrix(X, n, d);
+    A = sim_mat(X, n, d);
     free_matrix(X, n);
     if (A == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
         return NULL;
     }
-    result = c_matrix_to_py(A, n, n);
+    result = to_py_mat(A, n, n);
     free_matrix(A, n);
     if (result == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
@@ -156,15 +156,15 @@ static PyObject* py_sym(PyObject* self, PyObject* args) {
 
 /* input: data matrix X (n x d), n, d
    output: diagonal degree matrix D (n x n) */
-static double** compute_ddg_matrix(double** X, int n, int d) {
+static double** ddg_helper(double** X, int n, int d) {
     double** A;
     double** D;
 
-    A = compute_similarity_matrix(X, n, d);
+    A = sim_mat(X, n, d);
     if (A == NULL) {
         return NULL;
     }
-    D = compute_diagonal_degree_matrix(A, n);
+    D = ddg_mat(A, n);
     free_matrix(A, n);
     return D;
 }
@@ -182,18 +182,18 @@ static PyObject* py_ddg(PyObject* self, PyObject* args) {
     if (!PyArg_ParseTuple(args, "O", &py_x)) {
         return NULL;
     }
-    X = py_to_c_matrix(py_x, &n, &d);
+    X = to_c_mat(py_x, &n, &d);
     if (X == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
         return NULL;
     }
-    D = compute_ddg_matrix(X, n, d);
+    D = ddg_helper(X, n, d);
     free_matrix(X, n);
     if (D == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
         return NULL;
     }
-    result = c_matrix_to_py(D, n, n);
+    result = to_py_mat(D, n, n);
     free_matrix(D, n);
     if (result == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
@@ -215,18 +215,18 @@ static PyObject* py_norm(PyObject* self, PyObject* args) {
     if (!PyArg_ParseTuple(args, "O", &py_x)) {
         return NULL;
     }
-    X = py_to_c_matrix(py_x, &n, &d);
+    X = to_c_mat(py_x, &n, &d);
     if (X == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
         return NULL;
     }
-    W = compute_normalized_similarity_matrix(X, n, d);
+    W = norm_mat(X, n, d);
     free_matrix(X, n);
     if (W == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
         return NULL;
     }
-    result = c_matrix_to_py(W, n, n);
+    result = to_py_mat(W, n, n);
     free_matrix(W, n);
     if (result == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
@@ -237,14 +237,14 @@ static PyObject* py_norm(PyObject* self, PyObject* args) {
 
 /* input: Python H and W, output pointers for C matrices, dimension outputs
    output: 1 on success, 0 if shapes are wrong or allocation fails */
-static int parse_h_and_w(PyObject* py_h, PyObject* py_w,
+static int parse_hw(PyObject* py_h, PyObject* py_w,
     double*** H_out, double*** W_out,
     int* n_h, int* k, int* n_w, int* d_w) {
-    *H_out = py_to_c_matrix(py_h, n_h, k);
+    *H_out = to_c_mat(py_h, n_h, k);
     if (*H_out == NULL) {
         return 0;
     }
-    *W_out = py_to_c_matrix(py_w, n_w, d_w);
+    *W_out = to_c_mat(py_w, n_w, d_w);
     if (*W_out == NULL) {
         free_matrix(*H_out, *n_h);
         return 0;
@@ -274,18 +274,18 @@ static PyObject* py_symnmf(PyObject* self, PyObject* args) {
     if (!PyArg_ParseTuple(args, "OOidd", &py_h, &py_w, &max_iter, &eps, &beta)) {
         return NULL;
     }
-    if (!parse_h_and_w(py_h, py_w, &H, &W, &n_h, &k, &n_w, &d_w)) {
+    if (!parse_hw(py_h, py_w, &H, &W, &n_h, &k, &n_w, &d_w)) {
         PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
         return NULL;
     }
-    H_final = symnmf_optimize(H, W, n_h, k, max_iter, eps, beta);
+    H_final = optimize_h(H, W, n_h, k, max_iter, eps, beta);
     free_matrix(H, n_h);
     free_matrix(W, n_w);
     if (H_final == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
         return NULL;
     }
-    result = c_matrix_to_py(H_final, n_h, k);
+    result = to_py_mat(H_final, n_h, k);
     free_matrix(H_final, n_h);
     if (result == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");

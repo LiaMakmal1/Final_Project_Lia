@@ -74,7 +74,7 @@ void print_matrix(double** mat, int rows, int cols) {
 
 /* input: one line of text
    output: number of comma-separated values in that line */
-static int count_dimensions_in_line(const char* line) {
+static int count_dims(const char* line) {
     int count, i;
 
     if (line == NULL || line[0] == '\0' || line[0] == '\n') {
@@ -91,7 +91,7 @@ static int count_dimensions_in_line(const char* line) {
 
 /* input: open file pointer, pointers for n and d
    output: fills *out_n with row count, *out_d with dimension */
-static void count_rows_and_dims(FILE* fp, int* out_n, int* out_d) {
+static void scan_dims(FILE* fp, int* out_n, int* out_d) {
     char line[LINE_BUFFER];
 
     *out_n = 0;
@@ -101,7 +101,7 @@ static void count_rows_and_dims(FILE* fp, int* out_n, int* out_d) {
             continue;
         }
         if (*out_d == 0) {
-            *out_d = count_dimensions_in_line(line);
+            *out_d = count_dims(line);
         }
         (*out_n)++;
     }
@@ -109,7 +109,7 @@ static void count_rows_and_dims(FILE* fp, int* out_n, int* out_d) {
 
 /* input: open file pointer, pre-allocated X (n x d), n, d
    output: none - fills X with the parsed values */
-static void fill_points_matrix(FILE* fp, double** X, int n, int d) {
+static void fill_matrix(FILE* fp, double** X, int n, int d) {
     char line[LINE_BUFFER];
     char* token;
     int row, col;
@@ -139,7 +139,7 @@ static void fill_points_matrix(FILE* fp, double** X, int n, int d) {
 
 /* input: path to a .txt file
    output: data matrix X (n x d), sets *out_n and *out_d */
-double** read_points_file(const char* filename, int* out_n, int* out_d) {
+double** read_data(const char* filename, int* out_n, int* out_d) {
     FILE* fp;
     double** X;
 
@@ -147,21 +147,21 @@ double** read_points_file(const char* filename, int* out_n, int* out_d) {
     if (fp == NULL) {
         error_exit();
     }
-    count_rows_and_dims(fp, out_n, out_d);
+    scan_dims(fp, out_n, out_d);
     if (*out_n <= 0 || *out_d <= 0) {
         fclose(fp);
         error_exit();
     }
     X = alloc_matrix(*out_n, *out_d);
     rewind(fp);
-    fill_points_matrix(fp, X, *out_n, *out_d);
+    fill_matrix(fp, X, *out_n, *out_d);
     fclose(fp);
     return X;
 }
 
 /* input: two vectors a and b of length d
    output: squared Euclidean distance ||a - b||^2 */
-static double squared_distance(double* a, double* b, int d) {
+static double sq_dist(double* a, double* b, int d) {
     double sum, diff;
     int i;
 
@@ -175,7 +175,7 @@ static double squared_distance(double* a, double* b, int d) {
 
 /* input: data matrix X (n x d), n, d
    output: similarity matrix A (n x n) */
-double** compute_similarity_matrix(double** X, int n, int d) {
+double** sim_mat(double** X, int n, int d) {
     double** A;
     double dist;
     int i, j;
@@ -185,7 +185,7 @@ double** compute_similarity_matrix(double** X, int n, int d) {
         A[i][i] = 0.0;
         /* fill upper triangle then mirror - no need to call exp() twice per pair */
         for (j = i + 1; j < n; j++) {
-            dist = squared_distance(X[i], X[j], d);
+            dist = sq_dist(X[i], X[j], d);
             A[i][j] = exp(-(dist / 2.0));
             A[j][i] = A[i][j];
         }
@@ -195,7 +195,7 @@ double** compute_similarity_matrix(double** X, int n, int d) {
 
 /* input: similarity matrix A (n x n), n
    output: diagonal degree matrix D (n x n) */
-double** compute_diagonal_degree_matrix(double** A, int n) {
+double** ddg_mat(double** A, int n) {
     double** D;
     double sum;
     int i, j;
@@ -213,15 +213,15 @@ double** compute_diagonal_degree_matrix(double** A, int n) {
 
 /* input: data matrix X (n x d), n, d
    output: normalized similarity matrix W (n x n) */
-double** compute_normalized_similarity_matrix(double** X, int n, int d) {
+double** norm_mat(double** X, int n, int d) {
     double** A;
     double** D;
     double** W;
     double di, dj;
     int i, j;
 
-    A = compute_similarity_matrix(X, n, d);
-    D = compute_diagonal_degree_matrix(A, n);
+    A = sim_mat(X, n, d);
+    D = ddg_mat(A, n);
     W = alloc_matrix(n, n);
 
     for (i = 0; i < n; i++) {
@@ -243,7 +243,7 @@ double** compute_normalized_similarity_matrix(double** X, int n, int d) {
 
 /* input: matrices A and B (rows x cols)
    output: ||A - B||^2_F */
-double frobenius_diff_squared(double** A, double** B, int rows, int cols) {
+double frob_sq(double** A, double** B, int rows, int cols) {
     double sum, diff;
     int i, j;
 
@@ -259,7 +259,7 @@ double frobenius_diff_squared(double** A, double** B, int rows, int cols) {
 
 /* input: A (a_rows x a_cols), B (a_cols x b_cols)
    output: C = A * B (a_rows x b_cols) */
-static double** multiply_matrices(double** A, int a_rows, int a_cols,
+static double** mat_mul(double** A, int a_rows, int a_cols,
     double** B, int b_cols) {
     double** C;
     double sum;
@@ -280,7 +280,7 @@ static double** multiply_matrices(double** A, int a_rows, int a_cols,
 
 /* input: A (rows x cols)
    output: A^T (cols x rows) */
-static double** transpose_matrix(double** A, int rows, int cols) {
+static double** transpose(double** A, int rows, int cols) {
     double** T;
     int i, j;
 
@@ -295,7 +295,7 @@ static double** transpose_matrix(double** A, int rows, int cols) {
 
 /* input: src matrix, dst matrix (rows x cols)
    output: none - copies src values into dst */
-static void copy_matrix_values(double** src, double** dst, int rows, int cols) {
+static void mat_copy(double** src, double** dst, int rows, int cols) {
     int i, j;
 
     for (i = 0; i < rows; i++) {
@@ -307,7 +307,7 @@ static void copy_matrix_values(double** src, double** dst, int rows, int cols) {
 
 /* input: W (n x n), H_curr (n x k), H_next to write into (n x k), n, k, beta
    output: none - fills H_next with one update step */
-static void compute_h_next(double** W, double** H_curr, double** H_next,
+static void update_h(double** W, double** H_curr, double** H_next,
     int n, int k, double beta) {
     double** H_t;
     double** WH;
@@ -316,11 +316,11 @@ static void compute_h_next(double** W, double** H_curr, double** H_next,
     double ratio;
     int i, j;
 
-    H_t   = transpose_matrix(H_curr, n, k);          /* k x n */
-    WH    = multiply_matrices(W, n, n, H_curr, k);   /* n x k - numerator */
+    H_t   = transpose(H_curr, n, k);           /* k x n */
+    WH    = mat_mul(W, n, n, H_curr, k);        /* n x k - numerator */
     /* compute H^T*H (k x k) rather than H*H^T (n x n) - same result but way cheaper when k << n */
-    HtH   = multiply_matrices(H_t, k, n, H_curr, k); /* k x k */
-    denom = multiply_matrices(H_curr, n, k, HtH, k); /* n x k - denominator */
+    HtH   = mat_mul(H_t, k, n, H_curr, k);     /* k x k */
+    denom = mat_mul(H_curr, n, k, HtH, k);     /* n x k - denominator */
 
     for (i = 0; i < n; i++) {
         for (j = 0; j < k; j++) {
@@ -340,7 +340,7 @@ static void compute_h_next(double** W, double** H_curr, double** H_next,
 
 /* input: initial H (n x k), W (n x n), n, k, max_iter, eps, beta
    output: converged H (n x k) - caller must free */
-double** symnmf_optimize(double** H, double** W, int n, int k,
+double** optimize_h(double** H, double** W, int n, int k,
     int max_iter, double eps, double beta) {
     double** H_curr;
     double** H_next;
@@ -348,16 +348,16 @@ double** symnmf_optimize(double** H, double** W, int n, int k,
 
     H_curr = alloc_matrix(n, k);
     H_next = alloc_matrix(n, k);
-    copy_matrix_values(H, H_curr, n, k);
+    mat_copy(H, H_curr, n, k);
 
     for (iter = 0; iter < max_iter; iter++) {
-        compute_h_next(W, H_curr, H_next, n, k, beta);
+        update_h(W, H_curr, H_next, n, k, beta);
         /* stop early if H barely changed between iterations */
-        if (frobenius_diff_squared(H_next, H_curr, n, k) < eps) {
-            copy_matrix_values(H_next, H_curr, n, k);
+        if (frob_sq(H_next, H_curr, n, k) < eps) {
+            mat_copy(H_next, H_curr, n, k);
             break;
         }
-        copy_matrix_values(H_next, H_curr, n, k);
+        mat_copy(H_next, H_curr, n, k);
     }
     free_matrix(H_next, n);
     return H_curr;
@@ -373,17 +373,17 @@ static void run_goal(const char* goal, double** X, int n, int d) {
     double** W;
 
     if (strcmp(goal, "sym") == 0) {
-        A = compute_similarity_matrix(X, n, d);
+        A = sim_mat(X, n, d);
         print_matrix(A, n, n);
         free_matrix(A, n);
     } else if (strcmp(goal, "ddg") == 0) {
-        A = compute_similarity_matrix(X, n, d);
-        D = compute_diagonal_degree_matrix(A, n);
+        A = sim_mat(X, n, d);
+        D = ddg_mat(A, n);
         print_matrix(D, n, n);
         free_matrix(A, n);
         free_matrix(D, n);
     } else if (strcmp(goal, "norm") == 0) {
-        W = compute_normalized_similarity_matrix(X, n, d);
+        W = norm_mat(X, n, d);
         print_matrix(W, n, n);
         free_matrix(W, n);
     } else {
@@ -400,7 +400,7 @@ int main(int argc, char* argv[]) {
     if (argc != 3) {
         error_exit();
     }
-    X = read_points_file(argv[2], &n, &d);
+    X = read_data(argv[2], &n, &d);
     run_goal(argv[1], X, n, d);
     free_matrix(X, n);
     return 0;
