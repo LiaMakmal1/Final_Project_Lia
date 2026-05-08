@@ -1,47 +1,26 @@
-"""
-symnmf.py -- Python interface for the SymNMF clustering algorithm.
-
-Usage:
-    python3 symnmf.py <k> <goal> <file_name>
-
-Arguments:
-    k          Number of clusters (integer, 1 <= k < N)
-    goal       One of: symnmf | sym | ddg | norm
-    file_name  Path to a comma-separated .txt file with N data points
-
-Goals:
-    symnmf  Run the full SymNMF optimisation and print the H matrix.
-    sym     Print the similarity matrix A.
-    ddg     Print the diagonal degree matrix D.
-    norm    Print the normalised similarity matrix W.
-"""
-
 import sys
 import numpy as np
 
 import symnmfmodule as symnmf_c
 
-# Convergence parameters (shared with the C layer).
 EPS      = 1e-4
 MAX_ITER = 300
 BETA     = 0.5
 
-# Fix the random seed for reproducible H initialisation (PDF §1.4.1).
+# set seed once at startup so H initialization is reproducible
 np.random.seed(1234)
 
 
 def error_exit():
-    """Print the required error message and terminate with exit code 1."""
+    """input: none
+    output: none - prints error and exits"""
     print("An Error Has Occurred")
     sys.exit(1)
 
 
 def parse_args():
-    """Parse and validate command-line arguments.
-
-    Returns:
-        (k, goal, file_name) -- validated tuple ready for use in main().
-    """
+    """input: sys.argv
+    output: (k, goal, file_name) tuple"""
     if len(sys.argv) != 4:
         error_exit()
     try:
@@ -56,11 +35,8 @@ def parse_args():
 
 
 def read_input_file(file_name):
-    """Read a comma-separated .txt file and return a 2-D float32 NumPy array.
-
-    Blank lines are silently skipped.  Any I/O or parse error terminates
-    the program via error_exit().
-    """
+    """input: path to a .txt file
+    output: data matrix as a float32 numpy array (n x d)"""
     data = []
     try:
         with open(file_name, "r") as f:
@@ -83,45 +59,36 @@ def read_input_file(file_name):
 
 
 def format_number(x):
-    """Format a single float to exactly 4 decimal places.
-
-    Converts -0.0 to 0.0 so the output never contains a bare '-0.0000'.
-    """
+    """input: a float value
+    output: string with exactly 4 decimal places"""
     rounded = float(f"{x:.4f}")
+    # avoid printing -0.0000
     if rounded == -0.0:
         rounded = 0.0
     return f"{rounded:.4f}"
 
 
 def print_matrix(mat):
-    """Print a 2-D array as comma-separated rows, each on its own line."""
+    """input: 2D array
+    output: none - prints comma-separated rows to stdout"""
     for row in mat:
         print(",".join(format_number(val) for val in row))
 
 
 def initialize_h(w, k):
-    """Randomly initialise H with values drawn from U(0, 2*sqrt(mean(W)/k)).
-
-    The upper bound follows the formula in PDF §1.4.1.  The global seed
-    set at module load time (np.random.seed(1234)) guarantees reproducibility
-    across runs.
-
-    Args:
-        w: Normalised similarity matrix W as a NumPy array (n x n).
-        k: Number of clusters / columns in H.
-
-    Returns:
-        H0: Initial H matrix of shape (n, k), dtype float32.
-    """
+    """input: W matrix (n x n), number of clusters k
+    output: randomly initialized H matrix (n x k)"""
     n     = w.shape[0]
-    m     = float(np.mean(w))               # average entry of W
-    upper = 2.0 * np.sqrt(m / k)            # upper bound of the uniform range
+    m     = float(np.mean(w))
+    # upper bound from the formula: 2 * sqrt(mean(W) / k)
+    upper = 2.0 * np.sqrt(m / k)
     h     = np.random.uniform(0.0, upper, size=(n, k)).astype(np.float32)
     return h
 
 
 def main():
-    """Parse arguments, delegate to the C extension, and print the result."""
+    """input: command-line arguments (k, goal, file_name)
+    output: none - prints the result matrix"""
     k, goal, file_name = parse_args()
     vectors = read_input_file(file_name)
 
@@ -140,7 +107,7 @@ def main():
             result = np.array(symnmf_c.norm(vectors.tolist()), dtype=np.float32)
 
         else:
-            # goal == "symnmf": compute W first, initialise H, then optimise.
+            # compute W first, then initialize H and run the optimization
             w      = np.array(symnmf_c.norm(vectors.tolist()), dtype=np.float32)
             h_init = initialize_h(w, k)
             result = np.array(
