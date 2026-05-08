@@ -3,23 +3,24 @@ import numpy as np
 
 import symnmfmodule as symnmf_c
 
-EPS      = 1e-4
+EPS = 1e-4
 MAX_ITER = 300
-BETA     = 0.5
+BETA = 0.5
 
-# set seed once at startup so H initialization is reproducible
 np.random.seed(1234)
 
 
 def error_exit():
-    """input: none
-    output: none - prints error and exits"""
+    """Prints the error message and terminates the program.
+    input: none
+    output: none"""
     print("An Error Has Occurred")
     sys.exit(1)
 
 
 def parse_args():
-    """input: sys.argv
+    """Parses and validates command-line arguments.
+    input: sys.argv
     output: (k, goal, file_name) tuple"""
     if len(sys.argv) != 4:
         error_exit()
@@ -27,7 +28,7 @@ def parse_args():
         k = int(sys.argv[1])
     except Exception:
         error_exit()
-    goal      = sys.argv[2]
+    goal = sys.argv[2]
     file_name = sys.argv[3]
     if goal not in {"symnmf", "sym", "ddg", "norm"}:
         error_exit()
@@ -35,8 +36,9 @@ def parse_args():
 
 
 def read_input_file(file_name):
-    """input: path to a .txt file
-    output: data matrix as a float64 numpy array (n x d)"""
+    """Reads a comma-separated .txt file into a numpy matrix.
+    input: path to .txt file
+    output: data matrix as float64 numpy array (n x d)"""
     data = []
     try:
         with open(file_name, "r") as f:
@@ -59,36 +61,35 @@ def read_input_file(file_name):
 
 
 def format_number(x):
-    """input: a float value
-    output: string with exactly 4 decimal places"""
-    rounded = float(f"{x:.4f}")
-    # avoid printing -0.0000
-    if rounded == -0.0:
-        rounded = 0.0
-    return f"{rounded:.4f}"
+    """Formats a float to 4 decimal places, avoiding -0.0000.
+    input: float x
+    output: formatted string"""
+    s = f"{x:.4f}"
+    return "0.0000" if s == "-0.0000" else s
 
 
 def print_matrix(mat):
-    """input: 2D array
-    output: none - prints comma-separated rows to stdout"""
+    """Prints a 2D array to stdout, one comma-separated row per line.
+    input: 2D array
+    output: none"""
     for row in mat:
         print(",".join(format_number(val) for val in row))
 
 
 def initialize_h(w, k):
-    """input: W matrix (n x n), number of clusters k
-    output: randomly initialized H matrix (n x k)"""
-    n     = w.shape[0]
-    m     = float(np.mean(w))
-    # upper bound from the formula: 2 * sqrt(mean(W) / k)
+    """Randomly initializes H from [0, 2*sqrt(mean(W)/k)].
+    input: W matrix (n x n), number of clusters k
+    output: H matrix (n x k)"""
+    n = w.shape[0]
+    m = float(np.mean(w))
     upper = 2.0 * np.sqrt(m / k)
-    h     = np.random.uniform(0.0, upper, size=(n, k)).astype(np.float64)
-    return h
+    return np.random.uniform(0.0, upper, size=(n, k)).astype(np.float64)
 
 
 def main():
-    """input: command-line arguments (k, goal, file_name)
-    output: none - prints the result matrix"""
+    """Runs the requested goal and prints the result matrix.
+    input: command-line arguments (k, goal, file_name)
+    output: none"""
     k, goal, file_name = parse_args()
     vectors = read_input_file(file_name)
 
@@ -107,8 +108,7 @@ def main():
             result = np.array(symnmf_c.norm(vectors.tolist()), dtype=np.float64)
 
         else:
-            # compute W first, then initialize H and run the optimization
-            w      = np.array(symnmf_c.norm(vectors.tolist()), dtype=np.float64)
+            w = np.array(symnmf_c.norm(vectors.tolist()), dtype=np.float64)
             h_init = initialize_h(w, k)
             result = np.array(
                 symnmf_c.symnmf(h_init.tolist(), w.tolist(), MAX_ITER, EPS, BETA),
