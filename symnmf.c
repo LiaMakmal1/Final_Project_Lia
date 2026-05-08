@@ -386,8 +386,6 @@ static void run_goal(const char* goal, double** X, int n, int d) {
         W = norm_mat(X, n, d);
         print_matrix(W, n, n);
         free_matrix(W, n);
-    } else {
-        error_exit();
     }
 }
 
@@ -398,6 +396,12 @@ int main(int argc, char* argv[]) {
     int n, d;
 
     if (argc != 3) {
+        error_exit();
+    }
+    /* validate goal before allocating X so no memory is leaked on early exit */
+    if (strcmp(argv[1], "sym") != 0 &&
+        strcmp(argv[1], "ddg") != 0 &&
+        strcmp(argv[1], "norm") != 0) {
         error_exit();
     }
     X = read_data(argv[2], &n, &d);
