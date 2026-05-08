@@ -2,8 +2,9 @@
 #include <Python.h>
 #include "symnmf.h"
 
-/* input: Python list-of-lists
-   output: C matrix (caller must free), sets *out_rows and *out_cols */
+/* Converts a Python list-of-lists to a C matrix.
+   input: Python list-of-lists, pointers for rows and cols
+   output: C matrix (caller must free) */
 static double** to_c_mat(PyObject* py_mat, int* out_rows, int* out_cols) {
     double** mat;
     Py_ssize_t i, j, rows, cols;
@@ -24,8 +25,9 @@ static double** to_c_mat(PyObject* py_mat, int* out_rows, int* out_cols) {
     return mat;
 }
 
-/* input: C matrix (rows x cols)
-   output: Python list-of-lists of floats */
+/* Converts a C matrix to a Python list-of-lists of floats.
+   input: C matrix (rows x cols)
+   output: Python list-of-lists */
 static PyObject* to_py_mat(double** mat, int rows, int cols) {
     PyObject* outer;
     PyObject* row;
@@ -42,8 +44,9 @@ static PyObject* to_py_mat(double** mat, int rows, int cols) {
     return outer;
 }
 
-/* input: Python list-of-lists X (n x d)
-   output: Python list-of-lists similarity matrix A (n x n) */
+/* Computes the similarity matrix from data points X.
+   input: Python list-of-lists X (n x d)
+   output: Python list-of-lists A (n x n) */
 static PyObject* py_sym(PyObject* self, PyObject* args) {
     PyObject* py_x;
     double** X;
@@ -55,31 +58,21 @@ static PyObject* py_sym(PyObject* self, PyObject* args) {
     if (!PyArg_ParseTuple(args, "O", &py_x)) {
         return NULL;
     }
-    X      = to_c_mat(py_x, &n, &d);
-    A      = sim_mat(X, n, d);
+    X = to_c_mat(py_x, &n, &d);
+    A = sim_mat(X, n, d);
     free_matrix(X, n);
     result = to_py_mat(A, n, n);
     free_matrix(A, n);
     return result;
 }
 
-/* input: data matrix X (n x d), n, d
-   output: diagonal degree matrix D (n x n) */
-static double** ddg_helper(double** X, int n, int d) {
-    double** A;
-    double** D;
-
-    A = sim_mat(X, n, d);
-    D = ddg_mat(A, n);
-    free_matrix(A, n);
-    return D;
-}
-
-/* input: Python list-of-lists X (n x d)
-   output: Python list-of-lists diagonal degree matrix D (n x n) */
+/* Computes the diagonal degree matrix from data points X.
+   input: Python list-of-lists X (n x d)
+   output: Python list-of-lists D (n x n) */
 static PyObject* py_ddg(PyObject* self, PyObject* args) {
     PyObject* py_x;
     double** X;
+    double** A;
     double** D;
     PyObject* result;
     int n, d;
@@ -88,16 +81,19 @@ static PyObject* py_ddg(PyObject* self, PyObject* args) {
     if (!PyArg_ParseTuple(args, "O", &py_x)) {
         return NULL;
     }
-    X      = to_c_mat(py_x, &n, &d);
-    D      = ddg_helper(X, n, d);
+    X = to_c_mat(py_x, &n, &d);
+    A = sim_mat(X, n, d);
+    D = ddg_mat(A, n);
     free_matrix(X, n);
+    free_matrix(A, n);
     result = to_py_mat(D, n, n);
     free_matrix(D, n);
     return result;
 }
 
-/* input: Python list-of-lists X (n x d)
-   output: Python list-of-lists normalized similarity matrix W (n x n) */
+/* Computes the normalized similarity matrix from data points X.
+   input: Python list-of-lists X (n x d)
+   output: Python list-of-lists W (n x n) */
 static PyObject* py_norm(PyObject* self, PyObject* args) {
     PyObject* py_x;
     double** X;
@@ -109,22 +105,23 @@ static PyObject* py_norm(PyObject* self, PyObject* args) {
     if (!PyArg_ParseTuple(args, "O", &py_x)) {
         return NULL;
     }
-    X      = to_c_mat(py_x, &n, &d);
-    W      = norm_mat(X, n, d);
+    X = to_c_mat(py_x, &n, &d);
+    W = norm_mat(X, n, d);
     free_matrix(X, n);
     result = to_py_mat(W, n, n);
     free_matrix(W, n);
     return result;
 }
 
-/* input: Python H and W, output pointers for C matrices, dimension outputs
-   output: 1 on success, 0 if shapes mismatch */
+/* Extracts and validates H and W from Python objects.
+   input: Python H and W, output pointers for C matrices and dimensions
+   output: 1 on success, 0 if shapes are inconsistent */
 static int parse_hw(PyObject* py_h, PyObject* py_w,
     double*** H_out, double*** W_out,
     int* n_h, int* k, int* n_w, int* d_w) {
     *H_out = to_c_mat(py_h, n_h, k);
     *W_out = to_c_mat(py_w, n_w, d_w);
-    /* W must be square and H must have the same number of rows */
+    /* W must be square and match the row count of H */
     if (*n_w != *d_w || *n_h != *n_w) {
         free_matrix(*H_out, *n_h);
         free_matrix(*W_out, *n_w);
@@ -133,7 +130,8 @@ static int parse_hw(PyObject* py_h, PyObject* py_w,
     return 1;
 }
 
-/* input: Python H (n x k), W (n x n), max_iter, eps, beta
+/* Runs the SymNMF optimization from an initial H and W.
+   input: Python H (n x k), W (n x n), max_iter, eps, beta
    output: Python list-of-lists final H (n x k) */
 static PyObject* py_symnmf(PyObject* self, PyObject* args) {
     PyObject* py_h;
@@ -156,7 +154,7 @@ static PyObject* py_symnmf(PyObject* self, PyObject* args) {
     H_final = optimize_h(H, W, n_h, k, max_iter, eps, beta);
     free_matrix(H, n_h);
     free_matrix(W, n_w);
-    result  = to_py_mat(H_final, n_h, k);
+    result = to_py_mat(H_final, n_h, k);
     free_matrix(H_final, n_h);
     return result;
 }
@@ -182,8 +180,9 @@ static struct PyModuleDef symnmfmodule = {
     NULL, NULL, NULL, NULL
 };
 
-/* input: none (called by Python on import)
-   output: initialized symnmfmodule module object */
+/* Initializes the symnmfmodule Python extension.
+   input: none (called by Python on import)
+   output: module object */
 PyMODINIT_FUNC PyInit_symnmfmodule(void) {
     return PyModule_Create(&symnmfmodule);
 }

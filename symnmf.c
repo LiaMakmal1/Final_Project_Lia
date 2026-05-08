@@ -9,15 +9,17 @@
 #define BETA        0.5
 #define LINE_BUFFER 8192
 
-/* input: none
-   output: none - prints error message and exits */
+/* Prints the standard error message and exits.
+   input: none
+   output: none */
 static void error_exit(void) {
     printf("An Error Has Occurred\n");
     exit(1);
 }
 
-/* input: rows, cols
-   output: zero-initialized rows x cols matrix */
+/* Allocates a rows x cols matrix as one contiguous block.
+   input: rows, cols
+   output: zero-initialized matrix */
 double** alloc_matrix(int rows, int cols) {
     double** mat;
     double* data;
@@ -27,7 +29,7 @@ double** alloc_matrix(int rows, int cols) {
     if (mat == NULL) {
         error_exit();
     }
-    /* allocate all the data as one block so we only need one free() call later */
+    /* single block; free_matrix only needs to free mat[0] and mat */
     data = (double*)calloc(rows * cols, sizeof(double));
     if (data == NULL) {
         free(mat);
@@ -39,8 +41,9 @@ double** alloc_matrix(int rows, int cols) {
     return mat;
 }
 
-/* input: matrix created by alloc_matrix, number of rows
-   output: none - frees the matrix */
+/* Frees a matrix allocated by alloc_matrix.
+   input: matrix, rows (unused, kept for a consistent interface)
+   output: none */
 void free_matrix(double** mat, int rows) {
     (void)rows;
     if (mat != NULL) {
@@ -49,8 +52,9 @@ void free_matrix(double** mat, int rows) {
     }
 }
 
-/* input: matrix (rows x cols), rows, cols
-   output: none - prints to stdout with 4 decimal places */
+/* Prints the matrix to stdout, comma-separated, 4 decimal places per value.
+   input: matrix (rows x cols), rows, cols
+   output: none */
 void print_matrix(double** mat, int rows, int cols) {
     int i, j;
     double val;
@@ -58,7 +62,7 @@ void print_matrix(double** mat, int rows, int cols) {
     for (i = 0; i < rows; i++) {
         for (j = 0; j < cols; j++) {
             val = mat[i][j];
-            /* clamp tiny negatives to 0 so we don't print -0.0000 */
+            /* avoid -0.0000 in output */
             if (val > -0.00005 && val < 0.00005) {
                 val = 0.0;
             }
@@ -72,8 +76,9 @@ void print_matrix(double** mat, int rows, int cols) {
     }
 }
 
-/* input: one line of text
-   output: number of comma-separated values in that line */
+/* Counts the number of comma-separated values in a single line.
+   input: one line of text
+   output: number of values */
 static int count_dims(const char* line) {
     int count, i;
 
@@ -89,8 +94,9 @@ static int count_dims(const char* line) {
     return count;
 }
 
-/* input: open file pointer, pointers for n and d
-   output: fills *out_n with row count, *out_d with dimension */
+/* Scans the file to determine the number of rows and columns.
+   input: open file pointer, pointers for n and d
+   output: fills *out_n with row count, *out_d with column count */
 static void scan_dims(FILE* fp, int* out_n, int* out_d) {
     char line[LINE_BUFFER];
 
@@ -107,7 +113,8 @@ static void scan_dims(FILE* fp, int* out_n, int* out_d) {
     }
 }
 
-/* input: open file pointer, pre-allocated X (n x d), n, d
+/* Parses values from fp into the pre-allocated matrix X.
+   input: open file pointer, matrix X (n x d), n, d
    output: 1 on success, 0 on malformed input */
 static int fill_matrix(FILE* fp, double** X, int n, int d) {
     char line[LINE_BUFFER];
@@ -138,8 +145,9 @@ static int fill_matrix(FILE* fp, double** X, int n, int d) {
     return 1;
 }
 
-/* input: path to a .txt file
-   output: data matrix X (n x d), sets *out_n and *out_d */
+/* Reads a .txt data file and returns its contents as a matrix.
+   input: path to file, pointers for n and d
+   output: data matrix X (n x d) */
 double** read_data(const char* filename, int* out_n, int* out_d) {
     FILE* fp;
     double** X;
@@ -164,8 +172,9 @@ double** read_data(const char* filename, int* out_n, int* out_d) {
     return X;
 }
 
-/* input: two vectors a and b of length d
-   output: squared Euclidean distance ||a - b||^2 */
+/* Returns the squared Euclidean distance between two vectors.
+   input: vectors a and b of length d
+   output: ||a - b||^2 */
 static double sq_dist(double* a, double* b, int d) {
     double sum, diff;
     int i;
@@ -178,7 +187,8 @@ static double sq_dist(double* a, double* b, int d) {
     return sum;
 }
 
-/* input: data matrix X (n x d), n, d
+/* Builds the similarity matrix A from data X.
+   input: data matrix X (n x d), n, d
    output: similarity matrix A (n x n) */
 double** sim_mat(double** X, int n, int d) {
     double** A;
@@ -188,7 +198,7 @@ double** sim_mat(double** X, int n, int d) {
     A = alloc_matrix(n, n);
     for (i = 0; i < n; i++) {
         A[i][i] = 0.0;
-        /* fill upper triangle then mirror - no need to call exp() twice per pair */
+        /* fill upper triangle, mirror to lower for symmetry */
         for (j = i + 1; j < n; j++) {
             dist = sq_dist(X[i], X[j], d);
             A[i][j] = exp(-(dist / 2.0));
@@ -198,8 +208,9 @@ double** sim_mat(double** X, int n, int d) {
     return A;
 }
 
-/* input: similarity matrix A (n x n), n
-   output: diagonal degree matrix D (n x n) */
+/* Builds the diagonal degree matrix D from similarity matrix A.
+   input: similarity matrix A (n x n), n
+   output: diagonal matrix D (n x n) */
 double** ddg_mat(double** A, int n) {
     double** D;
     double sum;
@@ -216,7 +227,8 @@ double** ddg_mat(double** A, int n) {
     return D;
 }
 
-/* input: data matrix X (n x d), n, d
+/* Builds the normalized similarity matrix W = D^{-1/2} A D^{-1/2}.
+   input: data matrix X (n x d), n, d
    output: normalized similarity matrix W (n x n) */
 double** norm_mat(double** X, int n, int d) {
     double** A;
@@ -246,8 +258,9 @@ double** norm_mat(double** X, int n, int d) {
     return W;
 }
 
-/* input: matrices A and B (rows x cols)
-   output: ||A - B||^2_F */
+/* Returns the squared Frobenius norm ||A - B||^2_F.
+   input: matrices A and B (rows x cols)
+   output: squared Frobenius norm */
 double frob_sq(double** A, double** B, int rows, int cols) {
     double sum, diff;
     int i, j;
@@ -262,7 +275,8 @@ double frob_sq(double** A, double** B, int rows, int cols) {
     return sum;
 }
 
-/* input: A (a_rows x a_cols), B (a_cols x b_cols)
+/* Multiplies two matrices and returns the result.
+   input: A (a_rows x a_cols), B (a_cols x b_cols)
    output: C = A * B (a_rows x b_cols) */
 static double** mat_mul(double** A, int a_rows, int a_cols,
     double** B, int b_cols) {
@@ -283,7 +297,8 @@ static double** mat_mul(double** A, int a_rows, int a_cols,
     return C;
 }
 
-/* input: A (rows x cols)
+/* Returns the transpose of A.
+   input: A (rows x cols)
    output: A^T (cols x rows) */
 static double** transpose(double** A, int rows, int cols) {
     double** T;
@@ -298,8 +313,9 @@ static double** transpose(double** A, int rows, int cols) {
     return T;
 }
 
-/* input: src matrix, dst matrix (rows x cols)
-   output: none - copies src values into dst */
+/* Copies all values from src into dst.
+   input: src matrix, dst matrix (rows x cols)
+   output: none */
 static void mat_copy(double** src, double** dst, int rows, int cols) {
     int i, j;
 
@@ -310,8 +326,9 @@ static void mat_copy(double** src, double** dst, int rows, int cols) {
     }
 }
 
-/* input: W (n x n), H_curr (n x k), H_next to write into (n x k), n, k, beta
-   output: none - fills H_next with one update step */
+/* Applies one SymNMF update step, writing the result into H_next.
+   input: W (n x n), H_curr (n x k), H_next (n x k), n, k, beta
+   output: none */
 static void update_h(double** W, double** H_curr, double** H_next,
     int n, int k, double beta) {
     double** H_t;
@@ -320,15 +337,15 @@ static void update_h(double** W, double** H_curr, double** H_next,
     double** denom;
     int i, j;
 
-    H_t   = transpose(H_curr, n, k);           /* k x n */
-    WH    = mat_mul(W, n, n, H_curr, k);        /* n x k - numerator */
-    /* compute H^T*H (k x k) rather than H*H^T (n x n) - same result but way cheaper when k << n */
-    HtH   = mat_mul(H_t, k, n, H_curr, k);     /* k x k */
-    denom = mat_mul(H_curr, n, k, HtH, k);     /* n x k - denominator */
+    H_t = transpose(H_curr, n, k);          /* k x n */
+    WH = mat_mul(W, n, n, H_curr, k);       /* n x k, numerator */
+    /* H*(H^T*H) = (H*H^T)*H by associativity; H^T*H is k x k */
+    HtH = mat_mul(H_t, k, n, H_curr, k);   /* k x k */
+    denom = mat_mul(H_curr, n, k, HtH, k); /* n x k, denominator */
 
     for (i = 0; i < n; i++) {
         for (j = 0; j < k; j++) {
-            /* add 1e-6 for numerical stability instead of an if-check */
+            /* 1e-6 prevents division by zero */
             H_next[i][j] = H_curr[i][j] * (1.0 - beta + beta * WH[i][j] / (denom[i][j] + 1e-6));
         }
     }
@@ -338,7 +355,8 @@ static void update_h(double** W, double** H_curr, double** H_next,
     free_matrix(denom, n);
 }
 
-/* input: initial H (n x k), W (n x n), n, k, max_iter, eps, beta
+/* Iteratively updates H until convergence or max_iter is reached.
+   input: initial H (n x k), W (n x n), n, k, max_iter, eps, beta
    output: converged H (n x k) - caller must free */
 double** optimize_h(double** H, double** W, int n, int k,
     int max_iter, double eps, double beta) {
@@ -352,7 +370,7 @@ double** optimize_h(double** H, double** W, int n, int k,
 
     for (iter = 0; iter < max_iter; iter++) {
         update_h(W, H_curr, H_next, n, k, beta);
-        /* stop early if H barely changed between iterations */
+        /* convergence check */
         if (frob_sq(H_next, H_curr, n, k) < eps) {
             mat_copy(H_next, H_curr, n, k);
             break;
@@ -365,8 +383,9 @@ double** optimize_h(double** H, double** W, int n, int k,
 
 #ifndef SYMNMF_PYTHON_MODULE
 
-/* input: goal string, data X (n x d), n, d
-   output: none - prints the requested matrix */
+/* Computes and prints the matrix requested by goal.
+   input: goal string, data X (n x d), n, d
+   output: none */
 static void run_goal(const char* goal, double** X, int n, int d) {
     double** A;
     double** D;
@@ -389,8 +408,9 @@ static void run_goal(const char* goal, double** X, int n, int d) {
     }
 }
 
-/* input: argv[1] = goal, argv[2] = file path
-   output: none - prints result matrix and exits */
+/* Reads arguments, loads the data file, and runs the requested goal.
+   input: argv[1] = goal, argv[2] = file path
+   output: none */
 int main(int argc, char* argv[]) {
     double** X;
     int n, d;
