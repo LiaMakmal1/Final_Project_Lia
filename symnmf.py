@@ -36,7 +36,7 @@ def parse_args():
 
 def read_input_file(file_name):
     """input: path to a .txt file
-    output: data matrix as a float32 numpy array (n x d)"""
+    output: data matrix as a float64 numpy array (n x d)"""
     data = []
     try:
         with open(file_name, "r") as f:
@@ -50,7 +50,7 @@ def read_input_file(file_name):
     if not data:
         error_exit()
     try:
-        vectors = np.array(data, dtype=np.float32)
+        vectors = np.array(data, dtype=np.float64)
     except Exception:
         error_exit()
     if vectors.ndim != 2 or vectors.shape[0] == 0 or vectors.shape[1] == 0:
@@ -82,7 +82,7 @@ def initialize_h(w, k):
     m     = float(np.mean(w))
     # upper bound from the formula: 2 * sqrt(mean(W) / k)
     upper = 2.0 * np.sqrt(m / k)
-    h     = np.random.uniform(0.0, upper, size=(n, k)).astype(np.float32)
+    h     = np.random.uniform(0.0, upper, size=(n, k)).astype(np.float64)
     return h
 
 
@@ -98,21 +98,21 @@ def main():
 
     try:
         if goal == "sym":
-            result = np.array(symnmf_c.sym(vectors.tolist()), dtype=np.float32)
+            result = np.array(symnmf_c.sym(vectors.tolist()), dtype=np.float64)
 
         elif goal == "ddg":
-            result = np.array(symnmf_c.ddg(vectors.tolist()), dtype=np.float32)
+            result = np.array(symnmf_c.ddg(vectors.tolist()), dtype=np.float64)
 
         elif goal == "norm":
-            result = np.array(symnmf_c.norm(vectors.tolist()), dtype=np.float32)
+            result = np.array(symnmf_c.norm(vectors.tolist()), dtype=np.float64)
 
         else:
             # compute W first, then initialize H and run the optimization
-            w      = np.array(symnmf_c.norm(vectors.tolist()), dtype=np.float32)
+            w      = np.array(symnmf_c.norm(vectors.tolist()), dtype=np.float64)
             h_init = initialize_h(w, k)
             result = np.array(
                 symnmf_c.symnmf(h_init.tolist(), w.tolist(), MAX_ITER, EPS, BETA),
-                dtype=np.float32
+                dtype=np.float64
             )
 
         print_matrix(result)

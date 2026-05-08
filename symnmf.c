@@ -108,8 +108,8 @@ static void scan_dims(FILE* fp, int* out_n, int* out_d) {
 }
 
 /* input: open file pointer, pre-allocated X (n x d), n, d
-   output: none - fills X with the parsed values */
-static void fill_matrix(FILE* fp, double** X, int n, int d) {
+   output: 1 on success, 0 on malformed input */
+static int fill_matrix(FILE* fp, double** X, int n, int d) {
     char line[LINE_BUFFER];
     char* token;
     int row, col;
@@ -124,17 +124,18 @@ static void fill_matrix(FILE* fp, double** X, int n, int d) {
         token = strtok(line, ",\n");
         while (token != NULL) {
             if (col >= d) {
-                error_exit();
+                return 0;
             }
             X[row][col] = strtod(token, NULL);
             col++;
             token = strtok(NULL, ",\n");
         }
         if (col != d) {
-            error_exit();
+            return 0;
         }
         row++;
     }
+    return 1;
 }
 
 /* input: path to a .txt file
@@ -154,7 +155,11 @@ double** read_data(const char* filename, int* out_n, int* out_d) {
     }
     X = alloc_matrix(*out_n, *out_d);
     rewind(fp);
-    fill_matrix(fp, X, *out_n, *out_d);
+    if (!fill_matrix(fp, X, *out_n, *out_d)) {
+        free_matrix(X, *out_n);
+        fclose(fp);
+        error_exit();
+    }
     fclose(fp);
     return X;
 }
@@ -313,7 +318,6 @@ static void update_h(double** W, double** H_curr, double** H_next,
     double** WH;
     double** HtH;
     double** denom;
-    double ratio;
     int i, j;
 
     H_t   = transpose(H_curr, n, k);           /* k x n */
@@ -324,12 +328,8 @@ static void update_h(double** W, double** H_curr, double** H_next,
 
     for (i = 0; i < n; i++) {
         for (j = 0; j < k; j++) {
-            if (denom[i][j] == 0.0) {
-                ratio = 0.0;
-            } else {
-                ratio = WH[i][j] / denom[i][j];
-            }
-            H_next[i][j] = H_curr[i][j] * (1.0 - beta + beta * ratio);
+            /* add 1e-6 for numerical stability instead of an if-check */
+            H_next[i][j] = H_curr[i][j] * (1.0 - beta + beta * WH[i][j] / (denom[i][j] + 1e-6));
         }
     }
     free_matrix(H_t, k);
