@@ -34,7 +34,7 @@ def parse_args():
     return k, goal, file_name
 
 
-def read_data(file_name):
+def read_input_file(file_name):
     """input: path to a .txt file
     output: data matrix as a float32 numpy array (n x d)"""
     data = []
@@ -58,7 +58,7 @@ def read_data(file_name):
     return vectors
 
 
-def fmt_num(x):
+def format_number(x):
     """input: a float value
     output: string with exactly 4 decimal places"""
     rounded = float(f"{x:.4f}")
@@ -72,10 +72,10 @@ def print_matrix(mat):
     """input: 2D array
     output: none - prints comma-separated rows to stdout"""
     for row in mat:
-        print(",".join(fmt_num(val) for val in row))
+        print(",".join(format_number(val) for val in row))
 
 
-def init_h(w, k):
+def initialize_h(w, k):
     """input: W matrix (n x n), number of clusters k
     output: randomly initialized H matrix (n x k)"""
     n     = w.shape[0]
@@ -90,7 +90,7 @@ def main():
     """input: command-line arguments (k, goal, file_name)
     output: none - prints the result matrix"""
     k, goal, file_name = parse_args()
-    vectors = read_data(file_name)
+    vectors = read_input_file(file_name)
 
     n = vectors.shape[0]
     if k <= 0 or k >= n:
@@ -109,7 +109,7 @@ def main():
         else:
             # compute W first, then initialize H and run the optimization
             w      = np.array(symnmf_c.norm(vectors.tolist()), dtype=np.float32)
-            h_init = init_h(w, k)
+            h_init = initialize_h(w, k)
             result = np.array(
                 symnmf_c.symnmf(h_init.tolist(), w.tolist(), MAX_ITER, EPS, BETA),
                 dtype=np.float32
