@@ -182,6 +182,8 @@ static struct PyModuleDef symnmfmodule = {
     NULL, NULL, NULL, NULL
 };
 
+/* input: none (called by Python on import)
+   output: initialized symnmfmodule module object */
 PyMODINIT_FUNC PyInit_symnmfmodule(void) {
     return PyModule_Create(&symnmfmodule);
 }
