@@ -12,14 +12,15 @@
 /* Prints the standard error message and exits.
    input: none
    output: none */
-static void error_exit(void) {
+void error_exit(void) {
     printf("An Error Has Occurred\n");
     exit(1);
 }
 
 /* Allocates a rows x cols matrix as one contiguous block.
+   Returns NULL on failure so callers can free intermediates before exiting.
    input: rows, cols
-   output: zero-initialized matrix */
+   output: zero-initialized matrix, or NULL on failure */
 double** alloc_matrix(int rows, int cols) {
     double** mat;
     double* data;
@@ -27,13 +28,13 @@ double** alloc_matrix(int rows, int cols) {
 
     mat = (double**)malloc(rows * sizeof(double*));
     if (mat == NULL) {
-        error_exit();
+        return NULL;
     }
     /* single block; free_matrix only needs to free mat[0] and mat */
     data = (double*)calloc(rows * cols, sizeof(double));
     if (data == NULL) {
         free(mat);
-        error_exit();
+        return NULL;
     }
     for (i = 0; i < rows; i++) {
         mat[i] = data + (i * cols);
@@ -162,6 +163,10 @@ double** read_data(const char* filename, int* out_n, int* out_d) {
         error_exit();
     }
     X = alloc_matrix(*out_n, *out_d);
+    if (X == NULL) {
+        fclose(fp);
+        error_exit();
+    }
     rewind(fp);
     if (!fill_matrix(fp, X, *out_n, *out_d)) {
         free_matrix(X, *out_n);
@@ -188,14 +193,18 @@ static double sq_dist(double* a, double* b, int d) {
 }
 
 /* Builds the similarity matrix A from data X.
+   Returns NULL on allocation failure.
    input: data matrix X (n x d), n, d
-   output: similarity matrix A (n x n) */
+   output: similarity matrix A (n x n), or NULL */
 double** sim_mat(double** X, int n, int d) {
     double** A;
     double dist;
     int i, j;
 
     A = alloc_matrix(n, n);
+    if (A == NULL) {
+        return NULL;
+    }
     for (i = 0; i < n; i++) {
         A[i][i] = 0.0;
         /* fill upper triangle, mirror to lower for symmetry */
@@ -209,14 +218,18 @@ double** sim_mat(double** X, int n, int d) {
 }
 
 /* Builds the diagonal degree matrix D from similarity matrix A.
+   Returns NULL on allocation failure.
    input: similarity matrix A (n x n), n
-   output: diagonal matrix D (n x n) */
+   output: diagonal matrix D (n x n), or NULL */
 double** ddg_mat(double** A, int n) {
     double** D;
     double sum;
     int i, j;
 
     D = alloc_matrix(n, n);
+    if (D == NULL) {
+        return NULL;
+    }
     for (i = 0; i < n; i++) {
         sum = 0.0;
         for (j = 0; j < n; j++) {
@@ -228,8 +241,10 @@ double** ddg_mat(double** A, int n) {
 }
 
 /* Builds the normalized similarity matrix W = D^{-1/2} A D^{-1/2}.
+   Frees intermediate matrices A and D before returning.
+   Returns NULL on allocation failure (intermediates freed before returning).
    input: data matrix X (n x d), n, d
-   output: normalized similarity matrix W (n x n) */
+   output: normalized similarity matrix W (n x n), or NULL */
 double** norm_mat(double** X, int n, int d) {
     double** A;
     double** D;
@@ -238,9 +253,11 @@ double** norm_mat(double** X, int n, int d) {
     int i, j;
 
     A = sim_mat(X, n, d);
+    if (A == NULL) { return NULL; }
     D = ddg_mat(A, n);
+    if (D == NULL) { free_matrix(A, n); return NULL; }
     W = alloc_matrix(n, n);
-
+    if (W == NULL) { free_matrix(A, n); free_matrix(D, n); return NULL; }
     for (i = 0; i < n; i++) {
         for (j = 0; j < n; j++) {
             di = D[i][i];
@@ -276,8 +293,9 @@ double frob_sq(double** A, double** B, int rows, int cols) {
 }
 
 /* Multiplies two matrices and returns the result.
+   Returns NULL on allocation failure.
    input: A (a_rows x a_cols), B (a_cols x b_cols)
-   output: C = A * B (a_rows x b_cols) */
+   output: C = A * B (a_rows x b_cols), or NULL */
 static double** mat_mul(double** A, int a_rows, int a_cols,
     double** B, int b_cols) {
     double** C;
@@ -285,6 +303,9 @@ static double** mat_mul(double** A, int a_rows, int a_cols,
     int i, j, k;
 
     C = alloc_matrix(a_rows, b_cols);
+    if (C == NULL) {
+        return NULL;
+    }
     for (i = 0; i < a_rows; i++) {
         for (j = 0; j < b_cols; j++) {
             sum = 0.0;
@@ -298,13 +319,17 @@ static double** mat_mul(double** A, int a_rows, int a_cols,
 }
 
 /* Returns the transpose of A.
+   Returns NULL on allocation failure.
    input: A (rows x cols)
-   output: A^T (cols x rows) */
+   output: A^T (cols x rows), or NULL */
 static double** transpose(double** A, int rows, int cols) {
     double** T;
     int i, j;
 
     T = alloc_matrix(cols, rows);
+    if (T == NULL) {
+        return NULL;
+    }
     for (i = 0; i < rows; i++) {
         for (j = 0; j < cols; j++) {
             T[j][i] = A[i][j];
@@ -327,9 +352,10 @@ static void mat_copy(double** src, double** dst, int rows, int cols) {
 }
 
 /* Applies one SymNMF update step, writing the result into H_next.
+   Frees all intermediate matrices before returning on failure.
    input: W (n x n), H_curr (n x k), H_next (n x k), n, k, beta
-   output: none */
-static void update_h(double** W, double** H_curr, double** H_next,
+   output: 1 on success, 0 on allocation failure */
+static int update_h(double** W, double** H_curr, double** H_next,
     int n, int k, double beta) {
     double** H_t;
     double** WH;
@@ -337,12 +363,15 @@ static void update_h(double** W, double** H_curr, double** H_next,
     double** denom;
     int i, j;
 
-    H_t = transpose(H_curr, n, k);          /* k x n */
-    WH = mat_mul(W, n, n, H_curr, k);       /* n x k, numerator */
+    H_t = transpose(H_curr, n, k);
+    if (H_t == NULL) { return 0; }
+    WH = mat_mul(W, n, n, H_curr, k);
+    if (WH == NULL) { free_matrix(H_t, k); return 0; }
     /* H*(H^T*H) = (H*H^T)*H by associativity; H^T*H is k x k */
-    HtH = mat_mul(H_t, k, n, H_curr, k);   /* k x k */
-    denom = mat_mul(H_curr, n, k, HtH, k); /* n x k, denominator */
-
+    HtH = mat_mul(H_t, k, n, H_curr, k);
+    if (HtH == NULL) { free_matrix(H_t, k); free_matrix(WH, n); return 0; }
+    denom = mat_mul(H_curr, n, k, HtH, k);
+    if (denom == NULL) { free_matrix(H_t, k); free_matrix(WH, n); free_matrix(HtH, k); return 0; }
     for (i = 0; i < n; i++) {
         for (j = 0; j < k; j++) {
             /* 1e-6 prevents division by zero */
@@ -353,11 +382,13 @@ static void update_h(double** W, double** H_curr, double** H_next,
     free_matrix(WH, n);
     free_matrix(HtH, k);
     free_matrix(denom, n);
+    return 1;
 }
 
 /* Iteratively updates H until convergence or max_iter is reached.
+   Returns NULL on allocation failure (H_curr and H_next freed before returning).
    input: initial H (n x k), W (n x n), n, k, max_iter, eps, beta
-   output: converged H (n x k) - caller must free */
+   output: converged H (n x k) - caller must free, or NULL on failure */
 double** optimize_h(double** H, double** W, int n, int k,
     int max_iter, double eps, double beta) {
     double** H_curr;
@@ -365,11 +396,17 @@ double** optimize_h(double** H, double** W, int n, int k,
     int iter;
 
     H_curr = alloc_matrix(n, k);
+    if (H_curr == NULL) { return NULL; }
     H_next = alloc_matrix(n, k);
+    if (H_next == NULL) { free_matrix(H_curr, n); return NULL; }
     mat_copy(H, H_curr, n, k);
 
     for (iter = 0; iter < max_iter; iter++) {
-        update_h(W, H_curr, H_next, n, k, beta);
+        if (!update_h(W, H_curr, H_next, n, k, beta)) {
+            free_matrix(H_curr, n);
+            free_matrix(H_next, n);
+            return NULL;
+        }
         /* convergence check */
         if (frob_sq(H_next, H_curr, n, k) < eps) {
             mat_copy(H_next, H_curr, n, k);
@@ -385,27 +422,32 @@ double** optimize_h(double** H, double** W, int n, int k,
 
 /* Computes and prints the matrix requested by goal.
    input: goal string, data X (n x d), n, d
-   output: none */
-static void run_goal(const char* goal, double** X, int n, int d) {
+   output: 1 on success, 0 on allocation failure */
+static int run_goal(const char* goal, double** X, int n, int d) {
     double** A;
     double** D;
     double** W;
 
     if (strcmp(goal, "sym") == 0) {
         A = sim_mat(X, n, d);
+        if (A == NULL) { return 0; }
         print_matrix(A, n, n);
         free_matrix(A, n);
     } else if (strcmp(goal, "ddg") == 0) {
         A = sim_mat(X, n, d);
+        if (A == NULL) { return 0; }
         D = ddg_mat(A, n);
+        if (D == NULL) { free_matrix(A, n); return 0; }
         print_matrix(D, n, n);
         free_matrix(A, n);
         free_matrix(D, n);
     } else if (strcmp(goal, "norm") == 0) {
         W = norm_mat(X, n, d);
+        if (W == NULL) { return 0; }
         print_matrix(W, n, n);
         free_matrix(W, n);
     }
+    return 1;
 }
 
 /* Reads arguments, loads the data file, and runs the requested goal.
@@ -425,7 +467,10 @@ int main(int argc, char* argv[]) {
         error_exit();
     }
     X = read_data(argv[2], &n, &d);
-    run_goal(argv[1], X, n, d);
+    if (!run_goal(argv[1], X, n, d)) {
+        free_matrix(X, n);
+        error_exit();
+    }
     free_matrix(X, n);
     return 0;
 }

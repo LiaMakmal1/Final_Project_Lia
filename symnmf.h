@@ -1,6 +1,9 @@
 #ifndef SYMNMF_H
 #define SYMNMF_H
 
+/* error handling */
+void     error_exit(void);
+
 /* matrix utilities */
 double** alloc_matrix(int rows, int cols);
 void     free_matrix(double** mat, int rows);
