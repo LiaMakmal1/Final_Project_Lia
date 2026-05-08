@@ -1,12 +1,27 @@
+/*
+ * symnmf.c  --  Core C implementation of the SymNMF algorithm.
+ *
+ * Provides:
+ *   Matrix utilities : alloc_matrix, free_matrix, print_matrix
+ *   File I/O         : read_points_file
+ *   SymNMF math      : compute_similarity_matrix,
+ *                      compute_diagonal_degree_matrix,
+ *                      compute_normalized_similarity_matrix,
+ *                      symnmf_optimize
+ *
+ * When compiled WITHOUT the SYMNMF_PYTHON_MODULE macro a standalone
+ * command-line executable is produced that handles goals: sym, ddg, norm.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include "symnmf.h"
 
-#define EPS 0.0001
-#define MAX_ITER 300
-#define BETA 0.5
+#define EPS         0.0001
+#define MAX_ITER    300
+#define BETA        0.5
 #define LINE_BUFFER 8192
 
 static void error_exit(void) {
@@ -14,6 +29,13 @@ static void error_exit(void) {
     exit(1);
 }
 
+/*
+ * alloc_matrix: allocate a rows x cols matrix as a single contiguous block.
+ *
+ * All row pointers and data live in two malloc calls so that freeing
+ * mat[0] releases the entire payload (see free_matrix).
+ * calloc is used so every entry starts at 0.0.
+ */
 double** alloc_matrix(int rows, int cols) {
     double** mat;
     double* data;
@@ -34,14 +56,21 @@ double** alloc_matrix(int rows, int cols) {
     return mat;
 }
 
+/* free_matrix: release a matrix that was created by alloc_matrix. */
 void free_matrix(double** mat, int rows) {
     (void)rows;
     if (mat != NULL) {
-        free(mat[0]);
+        free(mat[0]); /* frees the single contiguous data block */
         free(mat);
     }
 }
 
+/*
+ * print_matrix: write every entry to stdout with 4 decimal places.
+ *
+ * Values in the open interval (-0.00005, 0.00005) are clamped to 0.0
+ * so that tiny negative rounding artefacts do not print as "-0.0000".
+ */
 void print_matrix(double** mat, int rows, int cols) {
     int i, j;
     double val;
@@ -62,7 +91,7 @@ void print_matrix(double** mat, int rows, int cols) {
     }
 }
 
-/* count_dimensions_in_line: count comma-separated values in one line */
+/* count_dimensions_in_line: count comma-separated tokens in one text line. */
 static int count_dimensions_in_line(const char* line) {
     int count, i;
 
@@ -78,7 +107,7 @@ static int count_dimensions_in_line(const char* line) {
     return count;
 }
 
-/* count_rows_and_dims: scan fp to determine n (row count) and d (dimension) */
+/* count_rows_and_dims: scan fp to determine n (row count) and d (dimension). */
 static void count_rows_and_dims(FILE* fp, int* out_n, int* out_d) {
     char line[LINE_BUFFER];
 
@@ -95,7 +124,7 @@ static void count_rows_and_dims(FILE* fp, int* out_n, int* out_d) {
     }
 }
 
-/* fill_points_matrix: parse lines from fp into pre-allocated X (n x d) */
+/* fill_points_matrix: parse lines from fp into the pre-allocated X (n x d). */
 static void fill_points_matrix(FILE* fp, double** X, int n, int d) {
     char line[LINE_BUFFER];
     char* token;
@@ -124,7 +153,7 @@ static void fill_points_matrix(FILE* fp, double** X, int n, int d) {
     }
 }
 
-/* read_points_file: open filename, parse all points, return n x d matrix */
+/* read_points_file: open filename, parse all data points, return n x d matrix. */
 double** read_points_file(const char* filename, int* out_n, int* out_d) {
     FILE* fp;
     double** X;
@@ -145,7 +174,7 @@ double** read_points_file(const char* filename, int* out_n, int* out_d) {
     return X;
 }
 
-/* squared_distance: return squared Euclidean distance between vectors a and b */
+/* squared_distance: return the squared Euclidean distance ||a - b||^2. */
 static double squared_distance(double* a, double* b, int d) {
     double sum, diff;
     int i;
@@ -158,7 +187,15 @@ static double squared_distance(double* a, double* b, int d) {
     return sum;
 }
 
-/* compute_similarity_matrix: build n x n similarity matrix A from data X */
+/*
+ * compute_similarity_matrix: build the n x n similarity matrix A.
+ *
+ * A[i][j] = exp( -||xi - xj||^2 / 2 )   for i != j
+ * A[i][i] = 0
+ *
+ * The upper triangle is computed first, then mirrored to the lower triangle
+ * to avoid redundant (and expensive) calls to exp().
+ */
 double** compute_similarity_matrix(double** X, int n, int d) {
     double** A;
     double dist;
@@ -176,7 +213,12 @@ double** compute_similarity_matrix(double** X, int n, int d) {
     return A;
 }
 
-/* compute_diagonal_degree_matrix: build diagonal degree matrix D from A */
+/*
+ * compute_diagonal_degree_matrix: build D where D[i][i] = sum of row i of A.
+ *
+ * The degree of vertex i is the total similarity it shares with all other
+ * points.  Off-diagonal entries remain 0 (initialised by calloc).
+ */
 double** compute_diagonal_degree_matrix(double** A, int n) {
     double** D;
     double sum;
@@ -193,7 +235,15 @@ double** compute_diagonal_degree_matrix(double** A, int n) {
     return D;
 }
 
-/* compute_normalized_similarity_matrix: return W = D^{-1/2} A D^{-1/2} */
+/*
+ * compute_normalized_similarity_matrix: return W = D^{-1/2} A D^{-1/2}.
+ *
+ * This is the symmetric normalised graph Laplacian.  Each entry is:
+ *   W[i][j] = A[i][j] / sqrt( D[i][i] * D[j][j] )
+ *
+ * Rows/columns whose degree is zero are left as 0 to avoid division by zero.
+ * A and D are freed internally; the caller only receives W.
+ */
 double** compute_normalized_similarity_matrix(double** X, int n, int d) {
     double** A;
     double** D;
@@ -221,7 +271,7 @@ double** compute_normalized_similarity_matrix(double** X, int n, int d) {
     return W;
 }
 
-/* frobenius_diff_squared: return ||A - B||^2_F */
+/* frobenius_diff_squared: return ||A - B||^2_F  (sum of squared differences). */
 double frobenius_diff_squared(double** A, double** B, int rows, int cols) {
     double sum, diff;
     int i, j;
@@ -236,7 +286,7 @@ double frobenius_diff_squared(double** A, double** B, int rows, int cols) {
     return sum;
 }
 
-/* multiply_matrices: return C = A (a_rows x a_cols) * B (a_cols x b_cols) */
+/* multiply_matrices: return C = A (a_rows x a_cols) * B (a_cols x b_cols). */
 static double** multiply_matrices(double** A, int a_rows, int a_cols,
     double** B, int b_cols) {
     double** C;
@@ -256,7 +306,7 @@ static double** multiply_matrices(double** A, int a_rows, int a_cols,
     return C;
 }
 
-/* transpose_matrix: return T = A^T where A is (rows x cols) */
+/* transpose_matrix: return T = A^T where A is (rows x cols). */
 static double** transpose_matrix(double** A, int rows, int cols) {
     double** T;
     int i, j;
@@ -270,7 +320,7 @@ static double** transpose_matrix(double** A, int rows, int cols) {
     return T;
 }
 
-/* copy_matrix_values: copy all entries from src into dst (rows x cols) */
+/* copy_matrix_values: deep-copy all entries from src into dst (rows x cols). */
 static void copy_matrix_values(double** src, double** dst, int rows, int cols) {
     int i, j;
 
@@ -281,7 +331,20 @@ static void copy_matrix_values(double** src, double** dst, int rows, int cols) {
     }
 }
 
-/* compute_h_next: apply one multiplicative NMF update step to H_curr */
+/*
+ * compute_h_next: apply one multiplicative NMF update step to H.
+ *
+ * The rule (with beta = 0.5) is:
+ *   H_next[i][j] = H_curr[i][j] * ( 1 - beta + beta * WH[i][j] / denom[i][j] )
+ *
+ * where:
+ *   WH    = W * H              (numerator, n x k)
+ *   denom = H * H^T * H        (denominator, n x k)
+ *
+ * We exploit matrix associativity to compute H*(H^T*H) instead of (H*H^T)*H
+ * because H^T*H is only k x k while H*H^T would be the large n x n matrix.
+ * A zero denominator entry is treated as 0 to avoid NaN propagation.
+ */
 static void compute_h_next(double** W, double** H_curr, double** H_next,
     int n, int k, double beta) {
     double** H_t;
@@ -291,10 +354,10 @@ static void compute_h_next(double** W, double** H_curr, double** H_next,
     double ratio;
     int i, j;
 
-    H_t   = transpose_matrix(H_curr, n, k);
-    WH    = multiply_matrices(W, n, n, H_curr, k);
-    HtH   = multiply_matrices(H_t, k, n, H_curr, k);
-    denom = multiply_matrices(H_curr, n, k, HtH, k);
+    H_t   = transpose_matrix(H_curr, n, k);          /* k x n */
+    WH    = multiply_matrices(W, n, n, H_curr, k);   /* n x k */
+    HtH   = multiply_matrices(H_t, k, n, H_curr, k); /* k x k */
+    denom = multiply_matrices(H_curr, n, k, HtH, k); /* n x k */
 
     for (i = 0; i < n; i++) {
         for (j = 0; j < k; j++) {
@@ -312,7 +375,16 @@ static void compute_h_next(double** W, double** H_curr, double** H_next,
     free_matrix(denom, n);
 }
 
-/* symnmf_optimize: run multiplicative updates on H until convergence */
+/*
+ * symnmf_optimize: iterate multiplicative updates on H until convergence.
+ *
+ * Convergence is declared when the squared Frobenius norm of the change
+ * between two consecutive H matrices drops below eps, or when max_iter
+ * iterations have been completed (whichever comes first).
+ *
+ * The input H is not modified; a freshly allocated result is returned
+ * and must be freed by the caller.
+ */
 double** symnmf_optimize(double** H, double** W, int n, int k,
     int max_iter, double eps, double beta) {
     double** H_curr;
@@ -337,7 +409,7 @@ double** symnmf_optimize(double** H, double** W, int n, int k,
 
 #ifndef SYMNMF_PYTHON_MODULE
 
-/* run_goal: dispatch goal string to the correct computation and print result */
+/* run_goal: dispatch the goal string to the correct computation and print. */
 static void run_goal(const char* goal, double** X, int n, int d) {
     double** A;
     double** D;
