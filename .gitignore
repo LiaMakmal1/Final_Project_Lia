@@ -1,0 +1,7 @@
+# compiled binaries and build artifacts
+symnmf
+symnmf.o
+*.so
+build/
+__pycache__/
+*.pyc
