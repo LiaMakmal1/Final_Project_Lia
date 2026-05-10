@@ -7,9 +7,6 @@ EPS = 1e-4
 MAX_ITER = 300
 BETA = 0.5
 
-np.random.seed(1234)
-
-
 def error_exit():
     print("An Error Has Occurred")
     sys.exit(1)
@@ -72,6 +69,7 @@ def initialize_h(w, k):
 
 
 def main():
+    np.random.seed(1234)
     k, goal, file_name = parse_args()
     vectors = read_input_file(file_name)
     n = vectors.shape[0]

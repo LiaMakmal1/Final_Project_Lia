@@ -4,9 +4,6 @@
 #include <math.h>
 #include "symnmf.h"
 
-#define EPS         0.0001
-#define MAX_ITER    300
-#define BETA        0.5
 #define LINE_BUFFER 8192
 
 void error_exit(void) {
