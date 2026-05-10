@@ -2,7 +2,9 @@
 #include <Python.h>
 #include "symnmf.h"
 
-/* convert Python list-of-lists to a C double matrix */
+/* Convert a Python list-of-lists to a C double matrix.
+   input: py_mat - Python list of lists of floats, rows, cols - output dimension pointers
+   output: allocated C matrix, or NULL on failure */
 static double** to_c_mat(PyObject* py_mat, int* rows, int* cols) {
     double** mat;
     int i, j;
@@ -19,7 +21,9 @@ static double** to_c_mat(PyObject* py_mat, int* rows, int* cols) {
     return mat;
 }
 
-/* convert C matrix to Python list-of-lists */
+/* Convert a C double matrix to a Python list-of-lists.
+   input: mat - C matrix, rows, cols - dimensions
+   output: Python list of lists of floats */
 static PyObject* to_py_mat(double** mat, int rows, int cols) {
     PyObject* outer = PyList_New(rows);
     int i, j;
@@ -33,6 +37,9 @@ static PyObject* to_py_mat(double** mat, int rows, int cols) {
     return outer;
 }
 
+/* Python binding: compute and return the similarity matrix.
+   input: data points as a Python list of lists
+   output: n x n similarity matrix as a Python list of lists */
 static PyObject* py_sym(PyObject* self, PyObject* args) {
     PyObject* py_x;
     double** X;
@@ -52,6 +59,9 @@ static PyObject* py_sym(PyObject* self, PyObject* args) {
     return result;
 }
 
+/* Python binding: compute and return the diagonal degree matrix.
+   input: data points as a Python list of lists
+   output: n x n diagonal degree matrix as a Python list of lists */
 static PyObject* py_ddg(PyObject* self, PyObject* args) {
     PyObject* py_x;
     double** X;
@@ -74,6 +84,9 @@ static PyObject* py_ddg(PyObject* self, PyObject* args) {
     return result;
 }
 
+/* Python binding: compute and return the normalized similarity matrix.
+   input: data points as a Python list of lists
+   output: n x n normalized similarity matrix as a Python list of lists */
 static PyObject* py_norm(PyObject* self, PyObject* args) {
     PyObject* py_x;
     double** X;
@@ -93,6 +106,9 @@ static PyObject* py_norm(PyObject* self, PyObject* args) {
     return result;
 }
 
+/* Python binding: run SymNMF optimization and return the final H matrix.
+   input: H, W as Python lists of lists, max_iter, eps, beta
+   output: final n x k H matrix as a Python list of lists */
 static PyObject* py_symnmf(PyObject* self, PyObject* args) {
     PyObject *py_h, *py_w;
     double **H, **W, **H_final;

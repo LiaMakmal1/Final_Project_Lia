@@ -10,12 +10,17 @@ MAX_ITER = 300
 BETA = 0.5
 
 def error_exit():
+    """Print error message and exit.
+    input: none
+    output: none"""
     print("An Error Has Occurred")
     sys.exit(1)
 
 
 def read_input_file(file_name):
-    """Read comma-separated file; return float64 numpy array (n x d)."""
+    """Read comma-separated input file into a numpy matrix.
+    input: file_name - path to input file
+    output: float64 numpy array of shape (n, d)"""
     data = []
     try:
         with open(file_name, "r") as f:
@@ -37,14 +42,18 @@ def read_input_file(file_name):
 
 
 def initialize_h(w, k):
-    """Return H (n x k) sampled uniformly from [0, 2*sqrt(mean(W)/k)]."""
+    """Initialize H with uniform random values in [0, 2*sqrt(mean(W)/k)].
+    input: w - n x n weight matrix, k - number of clusters
+    output: float64 numpy array of shape (n, k)"""
     m = float(np.mean(w))
     upper = 2.0 * np.sqrt(m / k)
     return np.random.uniform(0.0, upper, size=(w.shape[0], k)).astype(np.float64)
 
 
 def symnmf_labels(x, k):
-    """Run SymNMF via C extension; assign each point to its highest-scoring cluster."""
+    """Run SymNMF and assign each point to its highest-value cluster.
+    input: x - n x d data matrix, k - number of clusters
+    output: integer array of cluster labels of length n"""
     w = np.array(symnmfmodule.norm(x.tolist()), dtype=np.float64)
     h_init = initialize_h(w, k)
     h_final = np.array(
@@ -55,6 +64,9 @@ def symnmf_labels(x, k):
 
 
 def main():
+    """Compare SymNMF and K-Means silhouette scores and print the results.
+    input: none
+    output: none"""
     np.random.seed(1234)
     if len(sys.argv) != 3:
         error_exit()
