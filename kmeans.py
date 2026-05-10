@@ -6,15 +6,17 @@ EPS      = 1e-4
 
 
 def error_exit():
-    """input: none
-    output: none - prints error and exits"""
+    """Print error message and exit.
+    input: none
+    output: none"""
     print("An Error Has Occurred")
     sys.exit(1)
 
 
 def calc_euclidean_distance(u, v):
-    """input: two equal-length lists u, v
-    output: Euclidean distance between them"""
+    """Compute the Euclidean distance between two vectors.
+    input: u, v - equal-length lists
+    output: Euclidean distance as float"""
     d = len(u)
     squared_sum = 0.0
     for i in range(d):
@@ -23,7 +25,8 @@ def calc_euclidean_distance(u, v):
 
 
 def find_cluster(vector, centroids):
-    """input: a single data point vector, list of centroid vectors
+    """Find the nearest centroid to a given vector.
+    input: vector - a data point, centroids - list of centroid vectors
     output: index of the nearest centroid"""
     min_idx = 0
     min_dist = calc_euclidean_distance(vector, centroids[0])
@@ -36,8 +39,9 @@ def find_cluster(vector, centroids):
 
 
 def kmeans_labels(x, k, max_iter=MAX_ITER, eps=EPS):
-    """input: data matrix x (n x d numpy array), k, max_iter, eps
-    output: cluster label array of length n"""
+    """Run K-Means and return a cluster label for each data point.
+    input: x - n x d numpy array, k, max_iter, eps
+    output: list of cluster labels of length n"""
     vectors = x.tolist()
     n = len(vectors)
     d = len(vectors[0])

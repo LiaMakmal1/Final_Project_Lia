@@ -8,12 +8,17 @@ MAX_ITER = 300
 BETA = 0.5
 
 def error_exit():
+    """Print error message and exit.
+    input: none
+    output: none"""
     print("An Error Has Occurred")
     sys.exit(1)
 
 
 def parse_args():
-    """Parse argv; return (k, goal, file_name)."""
+    """Parse command-line arguments.
+    input: sys.argv - k, goal, filename
+    output: tuple (k, goal, file_name)"""
     if len(sys.argv) != 4:
         error_exit()
     try:
@@ -28,7 +33,9 @@ def parse_args():
 
 
 def read_input_file(file_name):
-    """Read comma-separated file; return float64 numpy array (n x d)."""
+    """Read comma-separated input file into a numpy matrix.
+    input: file_name - path to input file
+    output: float64 numpy array of shape (n, d)"""
     data = []
     try:
         with open(file_name, "r") as f:
@@ -50,25 +57,34 @@ def read_input_file(file_name):
 
 
 def format_number(x):
-    """Format to 4 decimal places; avoid printing -0.0000."""
+    """Format a float to 4 decimal places, mapping -0.0000 to 0.0000.
+    input: x - float value
+    output: formatted string"""
     s = f"{x:.4f}"
     return "0.0000" if s == "-0.0000" else s
 
 
 def print_matrix(mat):
-    """Print 2D array, comma-separated rows, 4 decimal places."""
+    """Print a 2D matrix comma-separated per row with 4 decimal places.
+    input: mat - 2D numpy array
+    output: none"""
     for row in mat:
         print(",".join(format_number(v) for v in row))
 
 
 def initialize_h(w, k):
-    """Return H (n x k) sampled uniformly from [0, 2*sqrt(mean(W)/k)]."""
+    """Initialize H with uniform random values in [0, 2*sqrt(mean(W)/k)].
+    input: w - n x n weight matrix, k - number of clusters
+    output: float64 numpy array of shape (n, k)"""
     n = w.shape[0]
     upper = 2.0 * np.sqrt(float(np.mean(w)) / k)
     return np.random.uniform(0.0, upper, size=(n, k)).astype(np.float64)
 
 
 def main():
+    """Parse arguments, run the requested goal, and print the result.
+    input: none
+    output: none"""
     np.random.seed(1234)
     k, goal, file_name = parse_args()
     vectors = read_input_file(file_name)

@@ -6,12 +6,17 @@
 
 #define LINE_BUFFER 8192
 
+/* Print error message and terminate.
+   input: none
+   output: none */
 void error_exit(void) {
     printf("An Error Has Occurred\n");
     exit(1);
 }
 
-/* allocate a contiguous rows x cols zero matrix; return NULL on failure */
+/* Allocate a contiguous rows x cols zero-initialized matrix.
+   input: rows, cols - matrix dimensions
+   output: allocated matrix pointer, or NULL on failure */
 double** alloc_matrix(int rows, int cols) {
     double** mat;
     double*  data;
@@ -26,12 +31,17 @@ double** alloc_matrix(int rows, int cols) {
     return mat;
 }
 
+/* Free a matrix allocated by alloc_matrix.
+   input: mat - matrix to free, rows - unused
+   output: none */
 void free_matrix(double** mat, int rows) {
     (void)rows;
     if (mat != NULL) { free(mat[0]); free(mat); }
 }
 
-/* print matrix to stdout with 4 decimal places, comma-separated per row */
+/* Print a matrix to stdout, comma-separated per row, 4 decimal places.
+   input: mat - matrix to print, rows, cols - dimensions
+   output: none */
 void print_matrix(double** mat, int rows, int cols) {
     int i, j;
     double v;
@@ -47,7 +57,9 @@ void print_matrix(double** mat, int rows, int cols) {
     }
 }
 
-/* count comma-separated values in one line */
+/* Count the number of comma-separated values in a line.
+   input: line - null-terminated string
+   output: column count, or 0 for empty/null lines */
 static int count_cols(const char* line) {
     int c = 1, i;
     if (line == NULL || line[0] == '\0' || line[0] == '\n') return 0;
@@ -56,7 +68,9 @@ static int count_cols(const char* line) {
     return c;
 }
 
-/* scan fp to find number of data rows (n) and dimensions (d) */
+/* Scan a file to determine the number of data rows and columns.
+   input: fp - open file pointer, n, d - output pointers for dimensions
+   output: none (results written to *n and *d) */
 static void scan_dims(FILE* fp, int* n, int* d) {
     char line[LINE_BUFFER];
     *n = 0; *d = 0;
@@ -67,7 +81,9 @@ static void scan_dims(FILE* fp, int* n, int* d) {
     }
 }
 
-/* parse fp into pre-allocated X; input file is assumed valid */
+/* Parse an open file into a pre-allocated matrix; file is assumed valid.
+   input: fp - open file pointer rewound to start, X - pre-allocated matrix
+   output: none */
 static void fill_matrix(FILE* fp, double** X) {
     char line[LINE_BUFFER];
     char* tok;
@@ -82,6 +98,9 @@ static void fill_matrix(FILE* fp, double** X) {
     }
 }
 
+/* Read data points from a file into a newly allocated matrix.
+   input: filename - path to input file, out_n, out_d - output dimension pointers
+   output: allocated n x d matrix, exits on error */
 double** read_points_file(const char* filename, int* out_n, int* out_d) {
     FILE* fp;
     double** X;
@@ -98,6 +117,9 @@ double** read_points_file(const char* filename, int* out_n, int* out_d) {
     return X;
 }
 
+/* Compute the squared Euclidean distance between two vectors.
+   input: a, b - d-dimensional vectors, d - dimension
+   output: squared distance as double */
 static double sq_dist(double* a, double* b, int d) {
     double s = 0.0, diff;
     int i;
@@ -105,7 +127,9 @@ static double sq_dist(double* a, double* b, int d) {
     return s;
 }
 
-/* A[i][j] = exp(-||xi - xj||^2 / 2), diagonal is 0 */
+/* Compute similarity matrix: A[i][j] = exp(-||xi-xj||^2/2), diagonal 0.
+   input: X - n x d data matrix, n, d - dimensions
+   output: allocated n x n similarity matrix, or NULL on failure */
 double** compute_similarity_matrix(double** X, int n, int d) {
     double** A;
     int i, j;
@@ -120,7 +144,9 @@ double** compute_similarity_matrix(double** X, int n, int d) {
     return A;
 }
 
-/* D[i][i] = sum of row i of A */
+/* Compute diagonal degree matrix: D[i][i] = sum of row i of A.
+   input: A - n x n similarity matrix, n - dimension
+   output: allocated n x n diagonal matrix, or NULL on failure */
 double** compute_diagonal_degree_matrix(double** A, int n) {
     double** D;
     double s;
@@ -136,7 +162,9 @@ double** compute_diagonal_degree_matrix(double** A, int n) {
     return D;
 }
 
-/* W = D^{-1/2} A D^{-1/2}; frees A and D before returning */
+/* Compute normalized similarity W = D^{-1/2} A D^{-1/2}; frees A and D.
+   input: X - n x d data matrix, n, d - dimensions
+   output: allocated n x n normalized matrix, or NULL on failure */
 double** compute_normalized_similarity_matrix(double** X, int n, int d) {
     double** A;
     double** D;
@@ -160,6 +188,9 @@ double** compute_normalized_similarity_matrix(double** X, int n, int d) {
     return W;
 }
 
+/* Compute the squared Frobenius norm of (A - B).
+   input: A, B - matrices of shape rows x cols
+   output: sum of squared element-wise differences */
 double frobenius_diff_squared(double** A, double** B, int rows, int cols) {
     double s = 0.0, diff;
     int i, j;
@@ -168,6 +199,9 @@ double frobenius_diff_squared(double** A, double** B, int rows, int cols) {
     return s;
 }
 
+/* Multiply two matrices: C = A (ar x ac) * B (ac x bc).
+   input: A - ar x ac matrix, B - ac x bc matrix, dimensions
+   output: allocated ar x bc result matrix, or NULL on failure */
 static double** mat_mul(double** A, int ar, int ac, double** B, int bc) {
     double** C;
     double s;
@@ -184,6 +218,9 @@ static double** mat_mul(double** A, int ar, int ac, double** B, int bc) {
     return C;
 }
 
+/* Transpose a matrix.
+   input: A - rows x cols matrix
+   output: allocated cols x rows transposed matrix, or NULL on failure */
 static double** mat_transpose(double** A, int rows, int cols) {
     double** T;
     int i, j;
@@ -196,6 +233,9 @@ static double** mat_transpose(double** A, int rows, int cols) {
     return T;
 }
 
+/* Copy src into dst element-wise.
+   input: src, dst - matrices of shape rows x cols
+   output: none */
 static void mat_copy(double** src, double** dst, int rows, int cols) {
     int i, j;
     for (i = 0; i < rows; i++)
@@ -203,7 +243,9 @@ static void mat_copy(double** src, double** dst, int rows, int cols) {
             dst[i][j] = src[i][j];
 }
 
-/* one multiplicative update: H_new = H * (1-b + b*WH / (H*Ht*H + 1e-6)) */
+/* Apply one multiplicative H update: H_new = H*(1-b + b*WH/(H*Ht*H+1e-6)).
+   input: W - n x n weight matrix, H, H_new - n x k matrices, n, k, beta
+   output: 1 on success, 0 on allocation failure */
 static int update_h(double** W, double** H, double** H_new, int n, int k, double beta) {
     double** Ht;
     double** WH;
@@ -229,7 +271,9 @@ static int update_h(double** W, double** H, double** H_new, int n, int k, double
     return 1;
 }
 
-/* iterate H until ||H_new - H||^2 < eps or max_iter steps; caller must free result */
+/* Run SymNMF optimization until convergence or max_iter steps.
+   input: H - initial n x k matrix, W - n x n weight matrix, n, k, max_iter, eps, beta
+   output: final H matrix (caller must free), or NULL on failure */
 double** symnmf_optimize(double** H, double** W, int n, int k,
     int max_iter, double eps, double beta) {
     double** H_curr;
@@ -257,6 +301,9 @@ double** symnmf_optimize(double** H, double** W, int n, int k,
 
 #ifndef SYMNMF_PYTHON_MODULE
 
+/* Compute and print the matrix for a given goal; frees X on error.
+   input: goal - "sym", "ddg", or "norm"; X - n x d data matrix, n, d
+   output: none */
 static void run_goal(const char* goal, double** X, int n, int d) {
     double** A;
     double** D;
@@ -283,6 +330,9 @@ static void run_goal(const char* goal, double** X, int n, int d) {
     }
 }
 
+/* Entry point: read goal and filename from argv, compute and print the result.
+   input: argc - argument count, argv - [program, goal, filename]
+   output: 0 on success */
 int main(int argc, char* argv[]) {
     double** X;
     int n, d;
