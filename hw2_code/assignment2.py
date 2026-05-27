@@ -1,6 +1,4 @@
-#################################
 # Your name:
-#################################
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -91,9 +89,6 @@ class Assignment2(object):
         best_k = int(np.argmin(val_errs)) + 1
         return best_k
 
-    #################################
-    # Place for additional methods
-    #################################
 
 
 if __name__ == '__main__':
